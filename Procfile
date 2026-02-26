@@ -1,1 +1,1 @@
-worker: python ubsolbot.py
+worker: python UbSolbot.py
