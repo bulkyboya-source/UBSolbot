@@ -1,1 +1,1 @@
-worker: python solana_bot.py
+worker: python ubsolbot.py
