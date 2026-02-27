@@ -150,11 +150,22 @@ async def cmd_stop(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         chats = [c for c in chats if c != chat_id]
         save_chats(chats)
 
-        await update.message.reply_text("🛑 Hourly updates stopped. Use /start to resume.")
+        await update.message.reply_text("🛑 Hourly updates stopped. Use /solana to resume.")
     else:
-        await update.message.reply_text("No active updates found. Use /start to begin.")
+        await update.message.reply_text("No active updates found. Use /solana to begin.")
 
-
+    
+async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "*📖 Available Commands*\n"
+        "━━━━━━━━━━━━━━━\n"
+        "/solana — start hourly SOL price updates\n"
+        "/price — get current SOL price instantly\n"
+        "/stopsol — stop hourly updates\n"
+        "/help — show this message",
+        parse_mode="Markdown",
+    )
+    
 async def send_price_update(ctx: ContextTypes.DEFAULT_TYPE):
     """Scheduled job: sends price to subscribed chat."""
     try:
@@ -206,7 +217,8 @@ def main():
 
     app.add_handler(CommandHandler("solana", cmd_start))
     app.add_handler(CommandHandler("price", cmd_price))
-    app.add_handler(CommandHandler("stop_solana", cmd_stop))
+    app.add_handler(CommandHandler("stopsol", cmd_stop))
+    app.add_handler(CommandHandler("help", cmd_help))
 
     logger.info("🚀 Bot is running...")
     app.run_polling(drop_pending_updates=True)
