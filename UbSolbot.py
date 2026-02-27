@@ -201,7 +201,7 @@ async def handle_witty_defense(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     try:
         genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
         model = genai.GenerativeModel(
-            model_name="gemini-2.0-flash",
+            model_name="gemini-2.5-flash",
             system_instruction=(
                 "You are a witty, sharp-tongued defender in a chat group. "
                 "When someone is being rude or abusive, you reply with a clever, "
