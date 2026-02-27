@@ -183,13 +183,7 @@ async def handle_witty_defense(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     words = text_lower.split()
 
     keyword_triggered = any(keyword.lower() in text_lower for keyword in TRIGGER_KEYWORDS)
-    ```
-
-    This checks if "bg" appears anywhere in the message instead of only as a standalone word.
-
-    Also make sure you have `ANTHROPIC_API_KEY` added in Railway variables — go to Railway → your service → **Variables** and add:
-    ```
-    ANTHROPIC_API_KEY = your_key_here
+    
 
     is_reply_to_protected = (
         message.reply_to_message and
