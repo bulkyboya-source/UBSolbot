@@ -15,6 +15,10 @@ import os
 import logging
 import requests
 import json
+import io
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+from datetime import timezone
 from google import genai
 from pathlib import Path
 from datetime import datetime
@@ -55,23 +59,77 @@ logger = logging.getLogger(__name__)
 
 # ── Price Fetcher ──────────────────────────────────────────────────────────────
 def get_sol_price() -> dict:
-    """Fetch SOL price from CoinGecko (free, no API key required)."""
-    url = "https://api.coingecko.com/api/v3/simple/price"
-    params = {
-        "ids": "solana",
-        "vs_currencies": "usd",
-        "include_1h_change": "true",
-        "include_market_cap": "true",
-    }
-    resp = requests.get(url, params=params, timeout=10)
-    resp.raise_for_status()
-    data = resp.json()["solana"]
+    """Fetch SOL price from Binance (free, no API key required)."""
+    price_url = "https://api.binance.com/api/v3/ticker/price?symbol=SOLUSDT"
+    price_resp = requests.get(price_url, timeout=10)
+    price_resp.raise_for_status()
+    price = float(price_resp.json()["price"])
+
+    kline_url = "https://api.binance.com/api/v3/klines?symbol=SOLUSDT&interval=1h&limit=2"
+    kline_resp = requests.get(kline_url, timeout=10)
+    kline_resp.raise_for_status()
+    klines = kline_resp.json()
+    open_1h = float(klines[0][1])
+    change_1h = ((price - open_1h) / open_1h) * 100
+
+    mcap_url = "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd&include_market_cap=true"
+    mcap_resp = requests.get(mcap_url, timeout=10)
+    market_cap = mcap_resp.json().get("solana", {}).get("usd_market_cap", 0)
+
     return {
-        "price": data["usd"],
-        "change_1h": data.get("usd_1h_change", 0),
-        "market_cap": data.get("usd_market_cap", 0),
+        "price": price,
+        "change_1h": change_1h,
+        "market_cap": market_cap,
     }
 
+
+def generate_chart() -> io.BytesIO:
+    """Generate 1H SOL/USDT candlestick chart using Binance data."""
+    kline_url = "https://api.binance.com/api/v3/klines?symbol=SOLUSDT&interval=5m&limit=12"
+    resp = requests.get(kline_url, timeout=10)
+    resp.raise_for_status()
+    klines = resp.json()
+
+    times = [datetime.fromtimestamp(k[0] / 1000, tz=timezone.utc) for k in klines]
+    opens = [float(k[1]) for k in klines]
+    highs = [float(k[2]) for k in klines]
+    lows = [float(k[3]) for k in klines]
+    closes = [float(k[4]) for k in klines]
+
+    fig, ax = plt.subplots(figsize=(10, 4))
+    fig.patch.set_facecolor("#0d1117")
+    ax.set_facecolor("#0d1117")
+
+    for i in range(len(times)):
+        color = "#26a69a" if closes[i] >= opens[i] else "#ef5350"
+        # Candle body
+        ax.bar(i, abs(closes[i] - opens[i]), bottom=min(opens[i], closes[i]),
+               color=color, width=0.6, zorder=3)
+        # Wick
+        ax.plot([i, i], [lows[i], highs[i]], color=color, linewidth=1, zorder=2)
+
+    ax.set_xlim(-0.5, len(times) - 0.5)
+    ax.set_xticks(range(len(times)))
+    ax.set_xticklabels(
+        [t.strftime("%H:%M") for t in times],
+        rotation=45, fontsize=7, color="#aaaaaa"
+    )
+    ax.tick_params(axis="y", colors="#aaaaaa", labelsize=8)
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"${x:,.2f}"))
+
+    for spine in ax.spines.values():
+        spine.set_edgecolor("#333333")
+
+    ax.grid(axis="y", color="#1f2937", linestyle="--", linewidth=0.5, zorder=1)
+    ax.set_title("SOL/USDT — 1H Chart (5m candles)", color="white", fontsize=11, pad=10)
+
+    plt.tight_layout()
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format="png", dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
+    buf.seek(0)
+    plt.close(fig)
+    return buf
 
 def format_price_message(data: dict, label: str = "📊 Solana Price Update") -> str:
     change = data["change_1h"]
@@ -121,17 +179,6 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
     )
 
-
-async def cmd_price(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    try:
-        data = get_sol_price()
-        msg = format_price_message(data, label="📊 Solana — Live Price")
-        await update.message.reply_text(msg, parse_mode="Markdown")
-    except Exception as e:
-        logger.error(f"Price fetch error: {e}")
-        await update.message.reply_text("⚠️ Could not fetch price. Try again shortly.")
-
-
 async def cmd_stop(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     jobs = ctx.job_queue.get_jobs_by_name(str(chat_id))
@@ -160,20 +207,30 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
     )
 
+async def cmd_price(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    try:
+        data = get_sol_price()
+        msg = format_price_message(data, label="📊 Solana — Live Price")
+        chart = generate_chart()
+        await update.message.reply_photo(photo=chart, caption=msg, parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Price fetch error: {e}")
+        await update.message.reply_text("⚠️ Could not fetch price. Try again shortly.")
+
 
 async def send_price_update(ctx: ContextTypes.DEFAULT_TYPE):
-    """Scheduled job: sends price to subscribed chat."""
     try:
         data = get_sol_price()
         msg = format_price_message(data)
-        await ctx.bot.send_message(
+        chart = generate_chart()
+        await ctx.bot.send_photo(
             chat_id=ctx.job.chat_id,
-            text=msg,
+            photo=chart,
+            caption=msg,
             parse_mode="Markdown",
         )
     except Exception as e:
         logger.error(f"Scheduled update error: {e}")
-
 
 # ── Witty Defense Handler ──────────────────────────────────────────────────────
 async def handle_witty_defense(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -184,6 +241,11 @@ async def handle_witty_defense(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     text = message.text
     text_lower = text.lower()
     words = text_lower.split()
+    
+    # Ignore if sender is a protected user
+    sender_username = message.from_user.username
+    if sender_username and sender_username.lower() in [u.lower() for u in PROTECTED_USERNAMES]:
+        return
 
     keyword_triggered = any(keyword.lower() in text_lower for keyword in TRIGGER_KEYWORDS)
     
@@ -468,11 +530,7 @@ def main():
             )
 
             async def send_restart_notice(context, cid=chat_id):
-                await context.bot.send_message(
-                    chat_id=cid,
-                    text="✅ *Bot has been updated and is back online!*\nHourly SOL updates will continue as scheduled.",
-                    parse_mode="Markdown"
-                )
+               return
 
             app.job_queue.run_once(send_restart_notice, when=5, chat_id=chat_id)
 
