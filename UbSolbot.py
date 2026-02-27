@@ -60,7 +60,7 @@ def get_sol_price() -> dict:
     params = {
         "ids": "solana",
         "vs_currencies": "usd",
-        "include_24hr_change": "true",
+        "include_1hr_change": "true",
         "include_market_cap": "true",
     }
     resp = requests.get(url, params=params, timeout=10)
@@ -68,13 +68,13 @@ def get_sol_price() -> dict:
     data = resp.json()["solana"]
     return {
         "price": data["usd"],
-        "change_24h": data.get("usd_24h_change", 0),
+        "change_1h": data.get("usd_1h_change", 0),
         "market_cap": data.get("usd_market_cap", 0),
     }
 
 
 def format_price_message(data: dict, label: str = "📊 Solana Price Update") -> str:
-    change = data["change_24h"]
+    change = data["change_1h"]
     arrow = "🟢 ▲" if change >= 0 else "🔴 ▼"
     cap_b = data["market_cap"] / 1_000_000_000
     now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
@@ -82,7 +82,7 @@ def format_price_message(data: dict, label: str = "📊 Solana Price Update") ->
         f"*{label}*\n"
         f"━━━━━━━━━━━━━━━\n"
         f"💰 Price:       *${data['price']:,.2f}*\n"
-        f"📈 24h Change:  {arrow} `{abs(change):.2f}%`\n"
+        f"📈 1h Change:  {arrow} `{abs(change):.2f}%`\n"
         f"🏦 Market Cap:  `${cap_b:.2f}B`\n"
         f"━━━━━━━━━━━━━━━\n"
         f"🕐 `{now}`"
