@@ -281,7 +281,171 @@ async def cmd_gems(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 # Filter criteria
                 if market_cap <= 0 or market_cap > 5_000_000:
                     continue
+                if volume_24h < 30_000:
+                    continue
+                if liquidity < 10_000:
+                    continue
 
+                # Calculate age in hours
+                age_hours = 0
+                if created_at:
+                    import time
+                    age_hours = (time.time() * 1000 - created_at) / (1000 * 3600)
+
+                gems.append({
+                    "name": name,
+                    "symbol": symbol,
+                    "market_cap": market_cap,
+                    "volume_24h": volume_24h,
+                    "volume_1h": volume_1h,
+                    "price_change_1h": price_change_1h,
+                    "price_change_24h": price_change_24h,
+                    "liquidity": liquidity,
+                    "buys_1h": buys_1h,
+                    "sells_1h": sells_1h,
+                    "age_hours": age_hours,
+                    "url": dex_url,
+                })
+
+        # Source 2: DexScreener boosted Solana tokens
+        boost_url = "https://api.dexscreener.com/token-boosts/top/v1"
+        resp2 = requests.get(boost_url, timeout=10)
+        if resp2.status_code == 200:
+            boosted = resp2.json()
+            for token in boosted[:20]:
+                if token.get("chainId") != "solana":
+                    continue
+                token_address = token.get("tokenAddress", "")
+                if not token_address or token_address in seen:
+                    continue
+                seen.add(token_address)
+
+                pair_resp = requests.get(
+                    f"https://api.dexscreener.com/latest/dex/tokens/{token_address}",
+                    timeout=10
+                )
+                if pair_resp.status_code != 200:
+                    continue
+                pairs = pair_resp.json().get("pairs", [])
+                if not pairs:
+                    continue
+
+                pair = pairs[0]
+                market_cap = pair.get("marketCap", 0) or 0
+                volume_24h = pair.get("volume", {}).get("h24", 0) or 0
+                volume_1h = pair.get("volume", {}).get("h1", 0) or 0
+                price_change_1h = pair.get("priceChange", {}).get("h1", 0) or 0
+                price_change_24h = pair.get("priceChange", {}).get("h24", 0) or 0
+                liquidity = pair.get("liquidity", {}).get("usd", 0) or 0
+                created_at = pair.get("pairCreatedAt", 0) or 0
+                name = pair.get("baseToken", {}).get("name", "Unknown")
+                symbol = pair.get("baseToken", {}).get("symbol", "?")
+                dex_url = pair.get("url", "")
+                txns_1h = pair.get("txns", {}).get("h1", {})
+                buys_1h = txns_1h.get("buys", 0) or 0
+                sells_1h = txns_1h.get("sells", 0) or 0
+
+                if market_cap <= 0 or market_cap > 5_000_000:
+                    continue
+                if volume_24h < 30_000:
+                    continue
+                if liquidity < 10_000:
+                    continue
+
+                age_hours = 0
+                if created_at:
+                    import time
+                    age_hours = (time.time() * 1000 - created_at) / (1000 * 3600)
+
+                gems.append({
+                    "name": name,
+                    "symbol": symbol,
+                    "market_cap": market_cap,
+                    "volume_24h": volume_24h,
+                    "volume_1h": volume_1h,
+                    "price_change_1h": price_change_1h,
+                    "price_change_24h": price_change_24h,
+                    "liquidity": liquidity,
+                    "buys_1h": buys_1h,
+                    "sells_1h": sells_1h,
+                    "age_hours": age_hours,
+                    "url": dex_url,
+                })
+
+        if not gems:
+            await update.message.reply_text("⚠️ No gems found right now. Try again in a few minutes.")
+            return
+
+        # Sort by 24h volume highest first
+        gems.sort(key=lambda x: x["volume_24h"], reverse=True)
+        gems = gems[:8]  # top 8 only
+
+        msg = "*💎 Early Solana Gems*\n"
+        msg += "━━━━━━━━━━━━━━━\n\n"
+
+        for i, gem in enumerate(gems):
+            change_1h = gem["price_change_1h"]
+            change_24h = gem["price_change_24h"]
+            arrow_1h = "🟢" if change_1h >= 0 else "🔴"
+            arrow_24h = "🟢" if change_24h >= 0 else "🔴"
+
+            # Format market cap
+            mcap = gem["market_cap"]
+            if mcap >= 1_000_000:
+                mcap_str = f"${mcap/1_000_000:.2f}M"
+            else:
+                mcap_str = f"${mcap/1_000:.0f}K"
+
+            # Format volume
+            vol = gem["volume_24h"]
+            if vol >= 1_000_000:
+                vol_str = f"${vol/1_000_000:.2f}M"
+            else:
+                vol_str = f"${vol/1_000:.0f}K"
+
+            # Format 1h volume
+            vol1h = gem["volume_1h"]
+            if vol1h >= 1_000_000:
+                vol1h_str = f"${vol1h/1_000_000:.2f}M"
+            else:
+                vol1h_str = f"${vol1h/1_000:.0f}K"
+
+            # Format liquidity
+            liq = gem["liquidity"]
+            if liq >= 1_000_000:
+                liq_str = f"${liq/1_000_000:.2f}M"
+            else:
+                liq_str = f"${liq/1_000:.0f}K"
+
+            # Format age
+            age = gem["age_hours"]
+            if age < 1:
+                age_str = f"{int(age*60)}m"
+            elif age < 24:
+                age_str = f"{age:.1f}h"
+            else:
+                age_str = f"{age/24:.1f}d"
+
+            msg += f"*{i+1}. {gem['name']} (${gem['symbol']})*\n"
+            msg += f"💰 MCap: `{mcap_str}` | 🕐 Age: `{age_str}`\n"
+            msg += f"📊 Vol 24h: `{vol_str}` | 1h: `{vol1h_str}`\n"
+            msg += f"💧 Liq: `{liq_str}`\n"
+            msg += f"{arrow_1h} 1h: `{abs(change_1h):.1f}%` | {arrow_24h} 24h: `{abs(change_24h):.1f}%`\n"
+            msg += f"🛒 Buys: `{gem['buys_1h']}` | Sells: `{gem['sells_1h']}` _(1h)_\n"
+            if gem["url"]:
+                msg += f"🔗 [View Chart]({gem['url']})\n"
+            msg += "\n"
+
+        msg += "━━━━━━━━━━━━━━━\n"
+        msg += "⚠️ _DYOR. Not financial advice._\n"
+        msg += f"🕐 `{datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}`"
+
+        await update.message.reply_text(msg, parse_mode="Markdown", disable_web_page_preview=True)
+
+    except Exception as e:
+        logger.error(f"Gems fetch error: {e}")
+        await update.message.reply_text("⚠️ Could not fetch gems. Try again shortly.")
+        
 # ── Main ───────────────────────────────────────────────────────────────────────
 def main():
     if BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
