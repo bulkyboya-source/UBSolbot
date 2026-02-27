@@ -271,7 +271,8 @@ def main():
     app.add_handler(CommandHandler("price", cmd_price))
     app.add_handler(CommandHandler("stopsol", cmd_stop))
     app.add_handler(CommandHandler("help", cmd_help))
-    async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    
+async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await handle_ai_message(update, ctx)
     await handle_witty_defense(update, ctx)
 
