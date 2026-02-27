@@ -60,7 +60,7 @@ def get_sol_price() -> dict:
     params = {
         "ids": "solana",
         "vs_currencies": "usd",
-        "include_1hr_change": "true",
+        "include_1h_change": "true",
         "include_market_cap": "true",
     }
     resp = requests.get(url, params=params, timeout=10)
@@ -114,7 +114,9 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "👋 *Solana Price Bot activated!*\n\n"
         "I'll send you SOL price updates every hour.\n\n"
         "Commands:\n"
+        "• /solana — get solana price every hour from command execution\n"
         "• /price — get price right now\n"
+        "• /gems — find early Solana gems\n"
         "• /stopsol — stop hourly updates",
         parse_mode="Markdown",
     )
@@ -153,6 +155,7 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "/solana — start hourly SOL price updates\n"
         "/price — get current SOL price instantly\n"
         "/stopsol — stop hourly updates\n"
+        "/gems — find early Solana gems\n"
         "/help — show this message",
         parse_mode="Markdown",
     )
@@ -241,6 +244,43 @@ async def handle_witty_defense(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await handle_witty_defense(update, ctx)
 
+async def cmd_gems(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🔍 *Scanning for early Solana gems...*", parse_mode="Markdown")
+    
+    try:
+        gems = []
+        seen = set()
+
+        # Source 1: DexScreener new Solana pairs
+        new_pairs_url = "https://api.dexscreener.com/latest/dex/search?q=solana"
+        resp1 = requests.get(new_pairs_url, timeout=10)
+        if resp1.status_code == 200:
+            pairs = resp1.json().get("pairs", [])
+            for pair in pairs:
+                if pair.get("chainId") != "solana":
+                    continue
+                token_address = pair.get("baseToken", {}).get("address", "")
+                if token_address in seen:
+                    continue
+                seen.add(token_address)
+
+                market_cap = pair.get("marketCap", 0) or 0
+                volume_24h = pair.get("volume", {}).get("h24", 0) or 0
+                volume_1h = pair.get("volume", {}).get("h1", 0) or 0
+                price_change_1h = pair.get("priceChange", {}).get("h1", 0) or 0
+                price_change_24h = pair.get("priceChange", {}).get("h24", 0) or 0
+                liquidity = pair.get("liquidity", {}).get("usd", 0) or 0
+                created_at = pair.get("pairCreatedAt", 0) or 0
+                name = pair.get("baseToken", {}).get("name", "Unknown")
+                symbol = pair.get("baseToken", {}).get("symbol", "?")
+                dex_url = pair.get("url", "")
+                txns_1h = pair.get("txns", {}).get("h1", {})
+                buys_1h = txns_1h.get("buys", 0) or 0
+                sells_1h = txns_1h.get("sells", 0) or 0
+
+                # Filter criteria
+                if market_cap <= 0 or market_cap > 5_000_000:
+                    continue
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 def main():
@@ -277,7 +317,8 @@ def main():
     app.add_handler(CommandHandler("stopsol", cmd_stop))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
+    app.add_handler(CommandHandler("gems", cmd_gems))
+    
     logger.info("🚀 Bot is running...")
     app.run_polling(drop_pending_updates=True)
 
