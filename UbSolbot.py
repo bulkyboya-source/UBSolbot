@@ -15,7 +15,7 @@ import os
 import logging
 import requests
 import json
-import google.generativeai as genai
+from google import genai
 from pathlib import Path
 from datetime import datetime
 from telegram import Update
@@ -199,26 +199,26 @@ async def handle_witty_defense(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-        model = genai.GenerativeModel(
-            model_name="gemini-2.5-flash",
-            system_instruction=(
-                "You are a witty, sharp-tongued defender in a chat group. "
-                "When someone is being rude or abusive, you reply with a clever, "
-                "witty, and humorous response that defends the target and embarrasses "
-                "the abuser. "
-                "IMPORTANT RULES:\n"
-                "1. Detect the language of the message and reply in the SAME language\n"
-                "2. Be witty and clever, not just rude back\n"
-                "3. Make the abuser look foolish\n"
-                "4. Keep it short — 1-2 sentences max\n"
-                "5. Use humor and sarcasm\n"
-                "6. If the message is in Hindi/Hinglish, reply in Hindi/Hinglish\n"
-                "7. If the message uses slang, use similar slang back"
+        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=f"Someone said this in the chat: \"{text}\". Give a witty defense response.",
+            config=genai.types.GenerateContentConfig(
+                system_instruction=(
+                    "You are a witty, sharp-tongued defender in a chat group. "
+                    "When someone is being rude or abusive, you reply with a clever, "
+                    "witty, and humorous response that defends the target and embarrasses "
+                    "the abuser. "
+                    "IMPORTANT RULES:\n"
+                    "1. Detect the language of the message and reply in the SAME language\n"
+                    "2. Be witty and clever, not just rude back\n"
+                    "3. Make the abuser look foolish\n"
+                    "4. Keep it short — 1-2 sentences max\n"
+                    "5. Use humor and sarcasm\n"
+                    "6. If the message is in Hindi/Hinglish, reply in Hindi/Hinglish\n"
+                    "7. If the message uses slang, use similar slang back"
+                )
             )
-        )
-        response = model.generate_content(
-            f"Someone said this in the chat: \"{text}\". Give a witty defense response."
         )
         await message.reply_text(response.text)
 
