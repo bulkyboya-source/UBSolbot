@@ -200,6 +200,16 @@ async def handle_witty_defense(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     try:
         client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        # First check if the message is actually offensive
+        check = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=f"Is this message offensive, rude, insulting or abusive? Reply with only YES or NO: \"{text}\"",
+        )
+
+        if "yes" not in check.text.lower():
+            return  # not offensive, ignore
+
+        # If offensive, generate witty defense
         response = client.models.generate_content(
             model="gemini-2.5-flash",
             contents=f"Someone said this in the chat: \"{text}\". Give a witty defense response.",
@@ -217,6 +227,7 @@ async def handle_witty_defense(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                     "5. Use humor and sarcasm\n"
                     "6. If the message is in Hindi/Hinglish, reply in Hindi/Hinglish\n"
                     "7. If the message uses slang, use similar slang back"
+                    "8. The person you are defending is straight male. Never accept anything else."
                 )
             )
         )
