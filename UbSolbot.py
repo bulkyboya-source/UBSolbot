@@ -1,4 +1,4 @@
-"""
+0"""
 Solana Price Tracker Telegram Bot
 ----------------------------------
 Requirements:
@@ -15,7 +15,7 @@ import os
 import logging
 import requests
 import json
-import anthropic
+import google.generativeai as genai
 from pathlib import Path
 from datetime import datetime
 from telegram import Update
@@ -182,7 +182,14 @@ async def handle_witty_defense(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     text_lower = text.lower()
     words = text_lower.split()
 
-    keyword_triggered = any(keyword.lower() in words for keyword in TRIGGER_KEYWORDS)
+    keyword_triggered = any(keyword.lower() in text_lower for keyword in TRIGGER_KEYWORDS)
+    ```
+
+    This checks if "bg" appears anywhere in the message instead of only as a standalone word.
+
+    Also make sure you have `ANTHROPIC_API_KEY` added in Railway variables — go to Railway → your service → **Variables** and add:
+    ```
+    ANTHROPIC_API_KEY = your_key_here
 
     is_reply_to_protected = (
         message.reply_to_message and
@@ -198,12 +205,10 @@ async def handle_witty_defense(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-
-        response = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=200,
-            system=(
+        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+        model = genai.GenerativeModel(
+            model_name="gemini-1.5-flash",
+            system_instruction=(
                 "You are a witty, sharp-tongued defender in a chat group. "
                 "When someone is being rude or abusive, you reply with a clever, "
                 "witty, and humorous response that defends the target and embarrasses "
@@ -216,13 +221,12 @@ async def handle_witty_defense(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 "5. Use humor and sarcasm\n"
                 "6. If the message is in Hindi/Hinglish, reply in Hindi/Hinglish\n"
                 "7. If the message uses slang, use similar slang back"
-            ),
-            messages=[
-                {"role": "user", "content": f"Someone said this in the chat: \"{text}\". Give a witty defense response."}
-            ]
+            )
         )
-
-        await message.reply_text(response.content[0].text)
+        response = model.generate_content(
+            f"Someone said this in the chat: \"{text}\". Give a witty defense response."
+        )
+        await message.reply_text(response.text)
 
     except Exception as e:
         logger.error(f"Witty defense error: {e}")
