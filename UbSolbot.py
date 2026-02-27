@@ -2,24 +2,20 @@
 Solana Price Tracker Telegram Bot
 ----------------------------------
 Requirements:
-    pip install python-telegram-bot requests
-
-Setup:
-    1. Create a bot via @BotFather on Telegram → get your BOT_TOKEN
-    2. Get your CHAT_ID by messaging @userinfobot on Telegram
-    3. Fill in BOT_TOKEN and CHAT_ID below (or use environment variables)
-    4. Run: python solana_bot.py
+    pip install python-telegram-bot[job-queue] requests anthropic
 
 Commands:
-    /start  - Start the bot & subscribe to hourly updates
-    /price  - Get current SOL price immediately
-    /stop   - Stop hourly updates
+    /solana  - Start hourly SOL price updates
+    /price   - Get current SOL price immediately
+    /stopsol - Stop hourly updates
+    /help    - Show all commands
 """
 
 import os
 import logging
 import requests
 import json
+import anthropic
 from pathlib import Path
 from datetime import datetime
 from telegram import Update
@@ -31,12 +27,14 @@ from telegram.ext import (
 )
 
 # ── Configuration ──────────────────────────────────────────────────────────────
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8740665446:AAFvR-Zh76G0hwgijO18V82KPfrJqOevG1E")
-# If you want to hard-code a default chat for scheduled messages, set this:
-DEFAULT_CHAT_ID = os.getenv("CHAT_ID", "")  # optional
+BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+DEFAULT_CHAT_ID = os.getenv("CHAT_ID", "")
 CHATS_FILE = "subscribed_chats.json"
 PROTECTED_USERNAMES = ["boolishgini"]  # usernames to protect, no @ symbol
-TRIGGER_KEYWORDS = ["bg"]  # add any keywords you want
+TRIGGER_KEYWORDS = ["bg"]              # trigger keywords, case insensitive
+UPDATE_INTERVAL_SECONDS = 3600         # 1 hour
+
+# ── Chat Persistence ───────────────────────────────────────────────────────────
 def load_chats():
     if Path(CHATS_FILE).exists():
         with open(CHATS_FILE, "r") as f:
@@ -46,12 +44,6 @@ def load_chats():
 def save_chats(chat_ids):
     with open(CHATS_FILE, "w") as f:
         json.dump(chat_ids, f)
-
-UPDATE_INTERVAL_SECONDS = 3600  # 1 hour
-
-RESPONSES = {
-    "bg": "Agya firse bkchodi krne lawde."
-}
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -97,7 +89,7 @@ def format_price_message(data: dict, label: str = "📊 Solana Price Update") ->
     )
 
 
-# ── Handlers ───────────────────────────────────────────────────────────────────
+# ── Command Handlers ───────────────────────────────────────────────────────────
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
 
@@ -113,7 +105,6 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         name=str(chat_id),
     )
 
-    # Save chat to file
     chats = load_chats()
     if chat_id not in chats:
         chats.append(chat_id)
@@ -124,7 +115,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "I'll send you SOL price updates every hour.\n\n"
         "Commands:\n"
         "• /price — get price right now\n"
-        "• /stop_solana — stop hourly updates",
+        "• /stopsol — stop hourly updates",
         parse_mode="Markdown",
     )
 
@@ -146,7 +137,6 @@ async def cmd_stop(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         for job in jobs:
             job.schedule_removal()
 
-        # Remove chat from file
         chats = load_chats()
         chats = [c for c in chats if c != chat_id]
         save_chats(chats)
@@ -155,7 +145,7 @@ async def cmd_stop(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("No active updates found. Use /solana to begin.")
 
-    
+
 async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "*📖 Available Commands*\n"
@@ -166,7 +156,8 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "/help — show this message",
         parse_mode="Markdown",
     )
-    
+
+
 async def send_price_update(ctx: ContextTypes.DEFAULT_TYPE):
     """Scheduled job: sends price to subscribed chat."""
     try:
@@ -180,7 +171,8 @@ async def send_price_update(ctx: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Scheduled update error: {e}")
 
-            
+
+# ── Witty Defense Handler ──────────────────────────────────────────────────────
 async def handle_witty_defense(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     message = update.message
     if not message or not message.text:
@@ -190,23 +182,20 @@ async def handle_witty_defense(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     text_lower = text.lower()
     words = text_lower.split()
 
-    # Check if any trigger keyword is used as a whole word
     keyword_triggered = any(keyword.lower() in words for keyword in TRIGGER_KEYWORDS)
 
-    # Check if message is a reply to a protected user
     is_reply_to_protected = (
         message.reply_to_message and
         message.reply_to_message.from_user.username and
         message.reply_to_message.from_user.username.lower() in [u.lower() for u in PROTECTED_USERNAMES]
     )
 
-    # Check if protected username is mentioned in the message
     is_mention_of_protected = any(
         user.lower() in text_lower for user in PROTECTED_USERNAMES
     )
 
     if not keyword_triggered and not is_reply_to_protected and not is_mention_of_protected:
-        return  # nothing to defend, ignore
+        return
 
     try:
         client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
@@ -237,7 +226,13 @@ async def handle_witty_defense(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.error(f"Witty defense error: {e}")
-        
+
+
+# ── Combined Message Handler ───────────────────────────────────────────────────
+async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    await handle_witty_defense(update, ctx)
+
+
 # ── Main ───────────────────────────────────────────────────────────────────────
 def main():
     if BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
@@ -258,25 +253,21 @@ def main():
                 chat_id=chat_id,
                 name=str(chat_id),
             )
-            # Send restart notification instead
-        async def send_restart_notice(context):
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="✅ *Bot has been updated and is back online!*\nHourly SOL updates will continue as scheduled.",
-                parse_mode="Markdown"
-            )
-        app.job_queue.run_once(send_restart_notice, when=5, chat_id=chat_id)
+
+            async def send_restart_notice(context, cid=chat_id):
+                await context.bot.send_message(
+                    chat_id=cid,
+                    text="✅ *Bot has been updated and is back online!*\nHourly SOL updates will continue as scheduled.",
+                    parse_mode="Markdown"
+                )
+
+            app.job_queue.run_once(send_restart_notice, when=5, chat_id=chat_id)
 
     app.add_handler(CommandHandler("solana", cmd_start))
     app.add_handler(CommandHandler("price", cmd_price))
     app.add_handler(CommandHandler("stopsol", cmd_stop))
     app.add_handler(CommandHandler("help", cmd_help))
-    
-async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    await handle_ai_message(update, ctx)
-    await handle_witty_defense(update, ctx)
-
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     logger.info("🚀 Bot is running...")
     app.run_polling(drop_pending_updates=True)
