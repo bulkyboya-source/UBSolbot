@@ -1,4 +1,4 @@
-0"""
+"""
 Solana Price Tracker Telegram Bot
 ----------------------------------
 Requirements:
