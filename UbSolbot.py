@@ -309,7 +309,7 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await handle_witty_defense(update, ctx)
 
 async def cmd_gems(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔍 *Scanning for early Solana gems...*", parse_mode="Markdown")
+    placeholder = await update.message.reply_text("🔍 *Scanning for early Solana gems...*", parse_mode="Markdown")
     
     try:
         gems = []
@@ -503,11 +503,13 @@ async def cmd_gems(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         msg += "━━━━━━━━━━━━━━━\n"
         msg += "⚠️ _DYOR. Not financial advice._\n"
         msg += f"🕐 `{datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}`"
-
+        
+        await placeholder.delete()
         await update.message.reply_text(msg, parse_mode="Markdown", disable_web_page_preview=True)
 
     except Exception as e:
         logger.error(f"Gems fetch error: {e}")
+        await placeholder.delete()
         await update.message.reply_text("⚠️ Could not fetch gems. Try again shortly.")
         
 async def cmd_og(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -520,7 +522,7 @@ async def cmd_og(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     contract = args[0].strip()
-    await update.message.reply_text("🔍 *Looking up token...*", parse_mode="Markdown")
+    placeholder = await update.message.reply_text("🔍 *Looking up token...*", parse_mode="Markdown")
 
     try:
         # Fetch from DexScreener
@@ -581,7 +583,7 @@ async def cmd_og(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
         msg = f"*🪙 {name} (${symbol})*\n"
         msg += "━━━━━━━━━━━━━━━\n"
-        msg += f"📋 Contract:\n_{contract}_\n\n"
+        msg += f"📋 Contract:\n`{contract}`\n\n"
         msg += f"💵 Price: `${float(price_usd):.8f}`\n"
         msg += f"💰 Market Cap: `{fmt(market_cap)}`\n"
         msg += f"💧 Liquidity: `{fmt(liquidity)}`\n"
@@ -654,7 +656,7 @@ async def cmd_og(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                             o_age = "Unknown"
 
                         msg += f"*{i+1}. {o_name} (${o_symbol})*\n"
-                        msg += f"📋 Contract:\n_{o_address}_\n"
+                        msg += f"📋 Contract:\n`{o_address}`\n"
                         msg += f"💰 MCap: `{fmt(o_mcap)}`\n"
                         msg += f"📊 Vol 1h: `{fmt(o_vol1h)}`\n"
                         msg += f"📅 Launched: `{o_launch}`\n"
@@ -662,14 +664,17 @@ async def cmd_og(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                         msg += f"🏦 DEX: `{o_dex}`\n"
                         if o_url:
                             msg += f"🔗 [View Chart]({o_url})\n"
+                        msg += "- - - - - - - -\n"
                         msg += "\n"
 
         except Exception as e:
             logger.error(f"Similar token lookup error: {e}")
-
+        
+        await placeholder.delete()
         await update.message.reply_text(msg, parse_mode="Markdown", disable_web_page_preview=True)
     except Exception as e:
         logger.error(f"OG lookup error: {e}")
+        await placeholder.delete()
         await update.message.reply_text("⚠️ Could not fetch token data. Check the contract address and try again.")
        
 # ── Main ───────────────────────────────────────────────────────────────────────
