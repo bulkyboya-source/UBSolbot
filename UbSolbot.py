@@ -359,6 +359,7 @@ async def cmd_gems(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 gems.append({
                     "name": name,
                     "symbol": symbol,
+                    "CA": tokenAddress,
                     "market_cap": market_cap,
                     "volume_24h": volume_24h,
                     "volume_1h": volume_1h,
