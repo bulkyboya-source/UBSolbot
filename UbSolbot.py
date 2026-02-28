@@ -697,21 +697,6 @@ def main():
                 name=str(chat_id),
             )
 
-            commit_msg = get_latest_commit_message()
-
-            async def send_restart_notice(context, cid=chat_id, cm=commit_msg):
-                await context.bot.send_message(
-                    chat_id=cid,
-                    text=(
-                        "✅ *Bot has been updated and is back online!*\n"
-                        "━━━━━━━━━━━━━━━\n"
-                        f"📝 *Update:* {cm}\n"
-                        "━━━━━━━━━━━━━━━\n"
-                        "Hourly SOL updates will continue as scheduled."
-                    ),
-                    parse_mode="Markdown"
-                )
-
             app.job_queue.run_once(send_restart_notice, when=5, chat_id=chat_id)
 
     app.add_handler(CommandHandler("solana", cmd_start))
