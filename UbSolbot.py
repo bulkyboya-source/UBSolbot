@@ -596,8 +596,78 @@ async def cmd_og(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         msg += "━━━━━━━━━━━━━━━\n"
         msg += "⚠️ _DYOR. Not financial advice._"
 
-        await update.message.reply_text(msg, parse_mode="Markdown", disable_web_page_preview=True)
+        # Find 2 oldest tokens with same name
+        try:
+            search_resp = requests.get(
+                f"https://api.dexscreener.com/latest/dex/search?q={symbol}",
+                timeout=10
+            )
+            if search_resp.status_code == 200:
+                all_pairs = search_resp.json().get("pairs", [])
 
+                # Filter same name/symbol, exclude current contract, solana only
+                similar = []
+                for p in all_pairs:
+                    p_symbol = p.get("baseToken", {}).get("symbol", "")
+                    p_address = p.get("baseToken", {}).get("address", "")
+                    p_chain = p.get("chainId", "")
+                    p_created = p.get("pairCreatedAt", 0) or 0
+
+                    if (p_symbol.lower() == symbol.lower()
+                            and p_address.lower() != contract.lower()
+                            and p_chain == "solana"
+                            and p_created > 0):
+                        similar.append(p)
+
+                # Sort by creation date oldest first
+                similar.sort(key=lambda x: x.get("pairCreatedAt", 0))
+                oldest_two = similar[:2]
+
+                if oldest_two:
+                    msg += "\n\n*👴 Oldest Tokens With Same Name*\n"
+                    msg += "━━━━━━━━━━━━━━━\n"
+
+                    for i, op in enumerate(oldest_two):
+                        o_name = op.get("baseToken", {}).get("name", "Unknown")
+                        o_symbol = op.get("baseToken", {}).get("symbol", "?")
+                        o_address = op.get("baseToken", {}).get("address", "")
+                        o_mcap = op.get("marketCap", 0) or 0
+                        o_vol1h = op.get("volume", {}).get("h1", 0) or 0
+                        o_created = op.get("pairCreatedAt", 0) or 0
+                        o_dex = op.get("dexId", "").upper()
+                        o_url = op.get("url", "")
+
+                        # Format launch date and age
+                        if o_created:
+                            o_launch = datetime.fromtimestamp(
+                                o_created / 1000, tz=timezone.utc
+                            ).strftime("%Y-%m-%d %H:%M UTC")
+                            age_s = datetime.now(tz=timezone.utc).timestamp() - o_created / 1000
+                            if age_s < 3600:
+                                o_age = f"{int(age_s/60)}m"
+                            elif age_s < 86400:
+                                o_age = f"{age_s/3600:.1f}h"
+                            else:
+                                o_age = f"{age_s/86400:.1f}d"
+                        else:
+                            o_launch = "Unknown"
+                            o_age = "Unknown"
+
+                        msg += f"*{i+1}. {o_name} (${o_symbol})*\n"
+                        msg += f"📋 Contract:\n_{o_address}_\n"
+                        msg += f"💰 MCap: `{fmt(o_mcap)}`\n"
+                        msg += f"📊 Vol 1h: `{fmt(o_vol1h)}`\n"
+                        msg += f"📅 Launched: `{o_launch}`\n"
+                        msg += f"🕐 Age: `{o_age}`\n"
+                        msg += f"🏦 DEX: `{o_dex}`\n"
+                        if o_url:
+                            msg += f"🔗 [View Chart]({o_url})\n"
+                        msg += "\n"
+
+        except Exception as e:
+            logger.error(f"Similar token lookup error: {e}")
+
+        await update.message.reply_text(msg, parse_mode="Markdown", disable_web_page_preview=True)
     except Exception as e:
         logger.error(f"OG lookup error: {e}")
         await update.message.reply_text("⚠️ Could not fetch token data. Check the contract address and try again.")
