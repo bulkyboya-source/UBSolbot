@@ -697,7 +697,7 @@ def main():
                 name=str(chat_id),
             )
 
-           commit_msg = get_latest_commit_message()
+            commit_msg = get_latest_commit_message()
 
             async def send_restart_notice(context, cid=chat_id, cm=commit_msg):
                 await context.bot.send_message(
