@@ -520,114 +520,88 @@ async def cmd_og(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     contract = args[0].strip()
-    await update.message.reply_text("🔍 *Looking up token on Pump.fun...*", parse_mode="Markdown")
+    await update.message.reply_text("🔍 *Looking up token...*", parse_mode="Markdown")
 
     try:
-        # Fetch token data from Pump.fun API
-        pumpfun_url = f"https://frontend-api.pump.fun/coins/{contract}"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        resp = requests.get(pumpfun_url, headers=headers, timeout=10)
+        # Fetch from DexScreener
+        url = f"https://api.dexscreener.com/latest/dex/tokens/{contract}"
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        pairs = resp.json().get("pairs", [])
 
-        if resp.status_code == 404:
-            await update.message.reply_text("⚠️ Token not found on Pump.fun. Check the contract address.")
+        if not pairs:
+            await update.message.reply_text("⚠️ Token not found. Check the contract address.")
             return
 
-        resp.raise_for_status()
-        token = resp.json()
+        # Use most liquid pair
+        pair = sorted(pairs, key=lambda x: x.get("liquidity", {}).get("usd", 0) or 0, reverse=True)[0]
 
-        name = token.get("name", "Unknown")
-        symbol = token.get("symbol", "?")
-        description = token.get("description", "No description available.")[:150]
-        market_cap = token.get("usd_market_cap", 0) or 0
-        created_timestamp = token.get("created_timestamp", 0) or 0
-        reply_count = token.get("reply_count", 0) or 0
-        website = token.get("website", "")
-        twitter = token.get("twitter", "")
-        telegram_link = token.get("telegram", "")
-        total_supply = token.get("total_supply", 0) or 0
-        nsfw = token.get("nsfw", False)
+        name = pair.get("baseToken", {}).get("name", "Unknown")
+        symbol = pair.get("baseToken", {}).get("symbol", "?")
+        market_cap = pair.get("marketCap", 0) or 0
+        volume_24h = pair.get("volume", {}).get("h24", 0) or 0
+        volume_1h = pair.get("volume", {}).get("h1", 0) or 0
+        price_usd = pair.get("priceUsd", "0") or "0"
+        price_change_1h = pair.get("priceChange", {}).get("h1", 0) or 0
+        price_change_24h = pair.get("priceChange", {}).get("h24", 0) or 0
+        liquidity = pair.get("liquidity", {}).get("usd", 0) or 0
+        created_at = pair.get("pairCreatedAt", 0) or 0
+        dex_url = pair.get("url", "")
+        dex_id = pair.get("dexId", "")
+        txns_24h = pair.get("txns", {}).get("h24", {})
+        buys = txns_24h.get("buys", 0) or 0
+        sells = txns_24h.get("sells", 0) or 0
 
-        # Format launch date
-        if created_timestamp:
+        # Format launch date and age
+        if created_at:
             launch_date = datetime.fromtimestamp(
-                created_timestamp / 1000 if created_timestamp > 1e10 else created_timestamp,
-                tz=timezone.utc
+                created_at / 1000, tz=timezone.utc
             ).strftime("%Y-%m-%d %H:%M UTC")
-
-            # Calculate age
-            now_ts = datetime.now(tz=timezone.utc).timestamp()
-            ts = created_timestamp / 1000 if created_timestamp > 1e10 else created_timestamp
-            age_seconds = now_ts - ts
+            age_seconds = datetime.now(tz=timezone.utc).timestamp() - created_at / 1000
             if age_seconds < 3600:
-                age_str = f"{int(age_seconds/60)}m ago"
+                age_str = f"{int(age_seconds/60)}m"
             elif age_seconds < 86400:
-                age_str = f"{age_seconds/3600:.1f}h ago"
+                age_str = f"{age_seconds/3600:.1f}h"
             else:
-                age_str = f"{age_seconds/86400:.1f}d ago"
+                age_str = f"{age_seconds/86400:.1f}d"
         else:
             launch_date = "Unknown"
             age_str = "Unknown"
 
-        # Format market cap
-        if market_cap >= 1_000_000:
-            mcap_str = f"${market_cap/1_000_000:.2f}M"
-        elif market_cap >= 1_000:
-            mcap_str = f"${market_cap/1_000:.1f}K"
-        else:
-            mcap_str = f"${market_cap:.2f}"
+        # Format numbers
+        def fmt(n):
+            if n >= 1_000_000:
+                return f"${n/1_000_000:.2f}M"
+            elif n >= 1_000:
+                return f"${n/1_000:.1f}K"
+            return f"${n:.2f}"
 
-        # Format total supply
-        if total_supply >= 1_000_000_000:
-            supply_str = f"{total_supply/1_000_000_000:.2f}B"
-        elif total_supply >= 1_000_000:
-            supply_str = f"{total_supply/1_000_000:.2f}M"
-        else:
-            supply_str = str(total_supply)
-
-        # Build links
-        links = []
-        pumpfun_link = f"https://pump.fun/{contract}"
-        links.append(f"[Pump.fun]({pumpfun_link})")
-        if website:
-            links.append(f"[Website]({website})")
-        if twitter:
-            links.append(f"[Twitter]({twitter})")
-        if telegram_link:
-            links.append(f"[Telegram]({telegram_link})")
+        arrow_1h = "🟢 ▲" if price_change_1h >= 0 else "🔴 ▼"
+        arrow_24h = "🟢 ▲" if price_change_24h >= 0 else "🔴 ▼"
 
         msg = f"*🪙 {name} (${symbol})*\n"
         msg += "━━━━━━━━━━━━━━━\n"
         msg += f"📋 Contract:\n_{contract}_\n\n"
-        msg += f"📅 Launch Date: `{launch_date}`\n"
+        msg += f"💵 Price: `${float(price_usd):.8f}`\n"
+        msg += f"💰 Market Cap: `{fmt(market_cap)}`\n"
+        msg += f"💧 Liquidity: `{fmt(liquidity)}`\n"
+        msg += f"📊 Vol 24h: `{fmt(volume_24h)}` | 1h: `{fmt(volume_1h)}`\n"
+        msg += f"{arrow_1h} 1h: `{abs(price_change_1h):.2f}%` | {arrow_24h} 24h: `{abs(price_change_24h):.2f}%`\n"
+        msg += f"🛒 Buys: `{buys}` | Sells: `{sells}` _(24h)_\n"
+        msg += f"📅 Listed: `{launch_date}`\n"
         msg += f"🕐 Age: `{age_str}`\n"
-        msg += f"💰 Market Cap: `{mcap_str}`\n"
-        msg += f"🪙 Total Supply: `{supply_str}`\n"
-        msg += f"💬 Replies: `{reply_count}`\n"
-        if nsfw:
-            msg += f"🔞 NSFW: `Yes`\n"
-        msg += f"\n📝 _{description}_\n\n"
-        msg += " | ".join(links)
-        msg += "\n━━━━━━━━━━━━━━━\n"
+        msg += f"🏦 DEX: `{dex_id.upper()}`\n\n"
+        if dex_url:
+            msg += f"🔗 [View on DexScreener]({dex_url})\n"
+        msg += "━━━━━━━━━━━━━━━\n"
         msg += "⚠️ _DYOR. Not financial advice._"
 
-        # Try to get token image
-        image_uri = token.get("image_uri", "")
-        if image_uri:
-            try:
-                await update.message.reply_photo(
-                    photo=image_uri,
-                    caption=msg,
-                    parse_mode="Markdown"
-                )
-            except Exception:
-                await update.message.reply_text(msg, parse_mode="Markdown", disable_web_page_preview=True)
-        else:
-            await update.message.reply_text(msg, parse_mode="Markdown", disable_web_page_preview=True)
+        await update.message.reply_text(msg, parse_mode="Markdown", disable_web_page_preview=True)
 
     except Exception as e:
         logger.error(f"OG lookup error: {e}")
-        await update.message.reply_text("⚠️ Could not fetch token data. Check the contract address and try again.")   
-        
+        await update.message.reply_text("⚠️ Could not fetch token data. Check the contract address and try again.")
+       
 # ── Main ───────────────────────────────────────────────────────────────────────
 def main():
     if BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
