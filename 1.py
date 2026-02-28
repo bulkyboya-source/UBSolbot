@@ -19,9 +19,10 @@ import json
 import io
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-from datetime import datetime, timezone
+from datetime import timezone
 from google import genai
 from pathlib import Path
+from datetime import datetime
 from telegram import Update
 from telegram.ext import MessageHandler, filters
 from telegram.ext import (
@@ -269,8 +270,8 @@ async def handle_witty_defense(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         # Skip offensive check if keyword was directly triggered — respond regardless
         if not keyword_triggered:
             check = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=f"Is this message offensive, rude, insulting or abusive? Reply with only YES or NO: \"{text}\"",
+            model="gemini-2.5-flash",
+            contents=f"Is this message offensive, rude, insulting or abusive? Reply with only YES or NO: \"{text}\"",
             )
             if "yes" not in check.text.lower():
                 return  # not offensive, ignore
@@ -288,11 +289,11 @@ async def handle_witty_defense(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                     "IMPORTANT RULES:\n"
                     "1. Detect the language of the message and reply in the SAME language\n"
                     "2. Be witty and clever, not just rude back\n"
-                    "3. Make the abuser look foolish and sometimes add bakchodi kam kar lawde to abuser in end\n"
+                    "3. Make the abuser look foolish and say bakchodi kam kar lawde to abuser in end\n"
                     "4. Keep it short — 1-2 sentences max\n"
                     "5. Use humor and sarcasm\n"
                     "6. If the message is in Hindi/Hinglish, reply in Hindi/Hinglish\n"
-                    "7. If the message uses slang, use similar slang back\n"
+                    "7. If the message uses slang, use similar slang back"
                     "8. The person you are defending is straight male."
                 )
             )
@@ -662,20 +663,6 @@ async def cmd_gems(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await placeholder.delete()
         await update.message.reply_text("⚠️ Could not fetch gems. Try again shortly.")     
      
-def get_latest_commit_message() -> str:
-    try:
-        import subprocess
-        result = subprocess.run(
-            ["git", "log", "-1", "--pretty=%s"],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        msg = result.stdout.strip()
-        return msg if msg else "No commit message found"
-    except Exception:
-        return "Unknown update"
-     
 # ── Main ───────────────────────────────────────────────────────────────────────
 def main():
     if BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
@@ -697,20 +684,8 @@ def main():
                 name=str(chat_id),
             )
 
-           commit_msg = get_latest_commit_message()
-
-            async def send_restart_notice(context, cid=chat_id, cm=commit_msg):
-                await context.bot.send_message(
-                    chat_id=cid,
-                    text=(
-                        "✅ *Bot has been updated and is back online!*\n"
-                        "━━━━━━━━━━━━━━━\n"
-                        f"📝 *Update:* {cm}\n"
-                        "━━━━━━━━━━━━━━━\n"
-                        "Hourly SOL updates will continue as scheduled."
-                    ),
-                    parse_mode="Markdown"
-                )
+            async def send_restart_notice(context, cid=chat_id):
+               return
 
             app.job_queue.run_once(send_restart_notice, when=5, chat_id=chat_id)
 
