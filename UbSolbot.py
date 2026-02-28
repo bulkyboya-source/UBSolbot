@@ -23,6 +23,7 @@ from google import genai
 from pathlib import Path
 from datetime import datetime
 from telegram import Update
+from datetime import timezone
 from telegram.ext import MessageHandler, filters
 from telegram.ext import (
     ApplicationBuilder,
@@ -203,6 +204,7 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "/price — get current SOL price instantly\n"
         "/stopsol — stop hourly updates\n"
         "/gems — find early Solana gems\n"
+        "/og — find 2 oldest coins on PF\n"
         "/help — show this message",
         parse_mode="Markdown",
     )
@@ -508,6 +510,124 @@ async def cmd_gems(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Gems fetch error: {e}")
         await update.message.reply_text("⚠️ Could not fetch gems. Try again shortly.")
         
+async def cmd_og(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    args = ctx.args
+    if not args:
+        await update.message.reply_text(
+            "Usage: `/og <contract_address>`\nExample: `/og EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`",
+            parse_mode="Markdown"
+        )
+        return
+
+    contract = args[0].strip()
+    await update.message.reply_text("🔍 *Looking up token on Pump.fun...*", parse_mode="Markdown")
+
+    try:
+        # Fetch token data from Pump.fun API
+        pumpfun_url = f"https://frontend-api.pump.fun/coins/{contract}"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        resp = requests.get(pumpfun_url, headers=headers, timeout=10)
+
+        if resp.status_code == 404:
+            await update.message.reply_text("⚠️ Token not found on Pump.fun. Check the contract address.")
+            return
+
+        resp.raise_for_status()
+        token = resp.json()
+
+        name = token.get("name", "Unknown")
+        symbol = token.get("symbol", "?")
+        description = token.get("description", "No description available.")[:150]
+        market_cap = token.get("usd_market_cap", 0) or 0
+        created_timestamp = token.get("created_timestamp", 0) or 0
+        reply_count = token.get("reply_count", 0) or 0
+        website = token.get("website", "")
+        twitter = token.get("twitter", "")
+        telegram_link = token.get("telegram", "")
+        total_supply = token.get("total_supply", 0) or 0
+        nsfw = token.get("nsfw", False)
+
+        # Format launch date
+        if created_timestamp:
+            launch_date = datetime.fromtimestamp(
+                created_timestamp / 1000 if created_timestamp > 1e10 else created_timestamp,
+                tz=timezone.utc
+            ).strftime("%Y-%m-%d %H:%M UTC")
+
+            # Calculate age
+            now_ts = datetime.now(tz=timezone.utc).timestamp()
+            ts = created_timestamp / 1000 if created_timestamp > 1e10 else created_timestamp
+            age_seconds = now_ts - ts
+            if age_seconds < 3600:
+                age_str = f"{int(age_seconds/60)}m ago"
+            elif age_seconds < 86400:
+                age_str = f"{age_seconds/3600:.1f}h ago"
+            else:
+                age_str = f"{age_seconds/86400:.1f}d ago"
+        else:
+            launch_date = "Unknown"
+            age_str = "Unknown"
+
+        # Format market cap
+        if market_cap >= 1_000_000:
+            mcap_str = f"${market_cap/1_000_000:.2f}M"
+        elif market_cap >= 1_000:
+            mcap_str = f"${market_cap/1_000:.1f}K"
+        else:
+            mcap_str = f"${market_cap:.2f}"
+
+        # Format total supply
+        if total_supply >= 1_000_000_000:
+            supply_str = f"{total_supply/1_000_000_000:.2f}B"
+        elif total_supply >= 1_000_000:
+            supply_str = f"{total_supply/1_000_000:.2f}M"
+        else:
+            supply_str = str(total_supply)
+
+        # Build links
+        links = []
+        pumpfun_link = f"https://pump.fun/{contract}"
+        links.append(f"[Pump.fun]({pumpfun_link})")
+        if website:
+            links.append(f"[Website]({website})")
+        if twitter:
+            links.append(f"[Twitter]({twitter})")
+        if telegram_link:
+            links.append(f"[Telegram]({telegram_link})")
+
+        msg = f"*🪙 {name} (${symbol})*\n"
+        msg += "━━━━━━━━━━━━━━━\n"
+        msg += f"📋 Contract:\n_{contract}_\n\n"
+        msg += f"📅 Launch Date: `{launch_date}`\n"
+        msg += f"🕐 Age: `{age_str}`\n"
+        msg += f"💰 Market Cap: `{mcap_str}`\n"
+        msg += f"🪙 Total Supply: `{supply_str}`\n"
+        msg += f"💬 Replies: `{reply_count}`\n"
+        if nsfw:
+            msg += f"🔞 NSFW: `Yes`\n"
+        msg += f"\n📝 _{description}_\n\n"
+        msg += " | ".join(links)
+        msg += "\n━━━━━━━━━━━━━━━\n"
+        msg += "⚠️ _DYOR. Not financial advice._"
+
+        # Try to get token image
+        image_uri = token.get("image_uri", "")
+        if image_uri:
+            try:
+                await update.message.reply_photo(
+                    photo=image_uri,
+                    caption=msg,
+                    parse_mode="Markdown"
+                )
+            except Exception:
+                await update.message.reply_text(msg, parse_mode="Markdown", disable_web_page_preview=True)
+        else:
+            await update.message.reply_text(msg, parse_mode="Markdown", disable_web_page_preview=True)
+
+    except Exception as e:
+        logger.error(f"OG lookup error: {e}")
+        await update.message.reply_text("⚠️ Could not fetch token data. Check the contract address and try again.")   
+        
 # ── Main ───────────────────────────────────────────────────────────────────────
 def main():
     if BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
@@ -540,6 +660,7 @@ def main():
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(CommandHandler("gems", cmd_gems))
+    app.add_handler(CommandHandler("og", cmd_og))
     
     logger.info("🚀 Bot is running...")
     app.run_polling(drop_pending_updates=True)
