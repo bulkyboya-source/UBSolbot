@@ -697,8 +697,6 @@ def main():
                 name=str(chat_id),
             )
 
-            app.job_queue.run_once(send_restart_notice, when=5, chat_id=chat_id)
-
     app.add_handler(CommandHandler("solana", cmd_start))
     app.add_handler(CommandHandler("price", cmd_price))
     app.add_handler(CommandHandler("stopsol", cmd_stop))
