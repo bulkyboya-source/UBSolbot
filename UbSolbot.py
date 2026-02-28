@@ -359,7 +359,7 @@ async def cmd_gems(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 gems.append({
                     "name": name,
                     "symbol": symbol,
-                    "CA": tokenAddress,
+                    "address": token_address,
                     "market_cap": market_cap,
                     "volume_24h": volume_24h,
                     "volume_1h": volume_1h,
@@ -380,7 +380,7 @@ async def cmd_gems(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             for token in boosted[:20]:
                 if token.get("chainId") != "solana":
                     continue
-                token_address = token.get("tokenAddress", "")
+                token_address = token.get("token_address", "")
                 if not token_address or token_address in seen:
                     continue
                 seen.add(token_address)
@@ -425,6 +425,7 @@ async def cmd_gems(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 gems.append({
                     "name": name,
                     "symbol": symbol,
+                    "address": token_address,
                     "market_cap": market_cap,
                     "volume_24h": volume_24h,
                     "volume_1h": volume_1h,
@@ -492,6 +493,7 @@ async def cmd_gems(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 age_str = f"{age/24:.1f}d"
 
             msg += f"*{i+1}. {gem['name']} (${gem['symbol']})*\n"
+            msg += f"`{gem['address']}`\n"
             msg += f"💰 MCap: `{mcap_str}` | 🕐 Age: `{age_str}`\n"
             msg += f"📊 Vol 24h: `{vol_str}` | 1h: `{vol1h_str}`\n"
             msg += f"💧 Liq: `{liq_str}`\n"
