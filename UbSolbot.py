@@ -411,10 +411,19 @@ async def cmd_og(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                     p_chain = p.get("chainId", "")
                     p_created = p.get("pairCreatedAt", 0) or 0
 
+                    # Check LP burned or locked
+                    p_lp_locked = p.get("liquidity", {}).get("locked", False) or False
+                    p_lp_burned = False
+                    p_labels = p.get("labels", []) or []
+                    if "lp-locked" in p_labels or "lp-burned" in p_labels:
+                        p_lp_burned = True
+                    p_lp_safe = p_lp_locked or p_lp_burned
+
                     if (p_symbol.lower() == symbol.lower()
                             and p_address.lower() != contract.lower()
                             and p_chain == "solana"
-                            and p_created > 0):
+                            and p_created > 0
+                            and p_lp_safe):
                         similar.append(p)
 
                 # Sort by creation date oldest first
@@ -451,7 +460,14 @@ async def cmd_og(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                             o_launch = "Unknown"
                             o_age = "Unknown"
 
-                        msg += f"*{i+1}. {o_name} (${o_symbol})*\n"
+                        o_lp_locked = op.get("liquidity", {}).get("locked", False) or False
+                        o_lp_burned = False
+                        o_labels = op.get("labels", []) or []
+                        if "lp-locked" in o_labels or "lp-burned" in o_labels:
+                            o_lp_burned = True
+                        lp_badge = "🔒 LP Locked" if o_lp_locked else "🔥 LP Burned"
+
+                        msg += f"*{i+1}. {o_name} (${o_symbol})* — {lp_badge}\n"
                         msg += f"📋 Contract:\n`{o_address}`\n"
                         msg += f"💰 MCap: `{fmt(o_mcap)}`\n"
                         msg += f"📊 Vol 1h: `{fmt(o_vol1h)}`\n"

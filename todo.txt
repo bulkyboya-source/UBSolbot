@@ -1,0 +1,2 @@
+improve login for finding og coins
+improve logic to find gems
